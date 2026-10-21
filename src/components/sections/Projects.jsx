@@ -1,53 +1,10 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Github } from 'lucide-react';
-
-const projects = [
-  {
-    title: 'Signify Academic Project',
-    description: 'Developed Signify, a gamified mobile app that teaches you the hand sign language in a funny and engaging way. It offers innovative, interactive features to help users stay motivated and enjoy the learning process without ever feeling bored.',
-    image: 'Image/signLanguage.jpg',
-    technologies: ['NestJS', 'Jetpack compose', 'SwiftUI', 'Typescript', 'MongoDB'],
-    liveUrl: 'https://github.com/YassineBM4/Signify/tree/master#readme',
-    githubUrl: 'https://github.com/YassineBM4/Signify'
-  },
-  {
-    title: 'MSAware Academic Project',
-    description: 'Created MSAware, a cross-platform AI-driven mobile app connected to smartwatch to support individuals with Multiple Sclerosis to predict MS attacks with probabilistic accuracy.',
-    image: 'Image/MSaware.jpg',
-    technologies: ['NestJS', 'Flutter', 'Typescript', 'Python', 'MongoDB', 'Firebase'],
-    liveUrl: 'https://www.linkedin.com/posts/yassine-ben-mabrouk-b7b071220_msaware-multiplesclerosis-ai-activity-7331102589335269376-6xf3?utm_source=share&utm_medium=member_desktop&rcm=ACoAADeJxE8Bg5LK8QxgknAhvn89_Q7f93pK3I4',
-    githubUrl: '#'
-  },
-  {
-    title: 'Abshore Internship Project',
-    description: 'Built the frontend of a financial verification platform for Abshore, allowing users to check if a check issuer has sufficient funds. Focused on creating a clean, user-friendly interface with secure integration to backend verification services.',
-    image: 'Image/abshore.jpeg',
-    technologies: ['React', 'React Bootstrap'],
-    liveUrl: '#',
-    githubUrl: 'https://github.com/YassineBM4/React-Abshore'
-  },
-  {
-    title: 'Swapcraze Academic Project',
-    description: 'Built 3 bartering applications for web, desktop, and mobile for product and service exchanges.',
-    image: 'Image/bartering.jpg',
-    technologies: ['Java For Desktop', 'Symfony For Web', 'PhpMyAdmin', 'Flutterflow For Mobile App'],
-    liveUrl: '#',
-    githubUrl: 'https://github.com/YassineBM4/Jeagers'
-  },
-  {
-    title: 'Health Mobile App Professional Project',
-    description: 'Designed a health mobile app that helps users locate nearby medical facilities, make reservations, and directly contact doctors.',
-    image: 'Image/DRkhaled.jpg',
-    technologies: ['Figma'],
-    liveUrl: '#',
-    githubUrl: '#'
-  }
-];
+import { ExternalLink, Github, Calendar } from 'lucide-react';
+import { projects } from '@/data/Portfolio';
 
 export function Projects() {
   return (
@@ -76,17 +33,30 @@ export function Projects() {
               transition={{ duration: 0.6, delay: index * 0.1 }}
               viewport={{ once: true }}
             >
-              <Card className="h-full hover:shadow-xl transition-all duration-300 glass-effect border-primary/20 group">
-                <div className="relative overflow-hidden rounded-t-lg">
-                  <img
-                    className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                      src={project.image} />
-                  <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </div>
+              <Card className="h-full hover:shadow-xl transition-all duration-300 glass-effect border-primary/20 group flex flex-col justify-between overflow-hidden">
+                <div>
+                  {/* Image Container with Top-Right Date Badge */}
+                  <div className="relative overflow-hidden rounded-t-lg">
+                    <img
+                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                      src={project.image}
+                      alt={project.title}
+                    />
+                    <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
 
-                <CardHeader>
-                  <CardTitle className="text-xl">{project.title}</CardTitle>
-                </CardHeader>
+                    {/* Top Right Date Overlay with Blur Effect */}
+                    {project.period && (
+                      <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md bg-black/50 border border-white/20 text-white text-xs font-medium shadow-lg">
+                        <Calendar className="h-3.5 w-3.5 text-cyan-400" />
+                        <span>{project.period}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <CardHeader>
+                    <CardTitle className="text-xl">{project.title}</CardTitle>
+                  </CardHeader>
+                </div>
 
                 <CardContent className="space-y-4">
                   <p className="text-muted-foreground">{project.description}</p>
@@ -100,21 +70,21 @@ export function Projects() {
                   </div>
 
                   <div className="flex gap-3 pt-4">
-                    {project.liveUrl !== '#' && (
-                    <a href={project.liveUrl} target="_blank" rel="noopener noreferrer">
-                      <Button size="sm" className="gradient-bg hover:opacity-90">
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Demo
-                      </Button>
-                    </a>
+                    {project.liveUrl && project.liveUrl !== '#' && (
+                      <a href={project.liveUrl} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" className="gradient-bg hover:opacity-90">
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Demo
+                        </Button>
+                      </a>
                     )}
-                    {project.githubUrl !== '#' && (
-                    <a href={project.githubUrl} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                        <Github className="mr-2 h-4 w-4" />
-                        Code
-                      </Button>
-                    </a>
+                    {project.githubUrl && project.githubUrl !== '#' && (
+                      <a href={project.githubUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+                          <Github className="mr-2 h-4 w-4" />
+                          Code
+                        </Button>
+                      </a>
                     )}
                   </div>
 

@@ -10,6 +10,8 @@
 	},
 	"dependencies": {
 		"@emailjs/browser": "^4.4.1",
+		"@gradio/client": "^2.7.1",
+		"@huggingface/inference": "^4.13.32",
 		"@radix-ui/react-alert-dialog": "^1.0.5",
 		"@radix-ui/react-avatar": "^1.0.3",
 		"@radix-ui/react-checkbox": "^1.0.4",
