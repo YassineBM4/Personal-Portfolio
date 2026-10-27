@@ -17,7 +17,10 @@ export function AvatarChat() {
   const animFrameRef = useRef(null);
 
   const audioRef = useRef(null);
-  const audioUrlRef = useRef(null);
+  
+  // Audio queue refs for incremental sentence playback
+  const audioQueueRef = useRef([]);
+  const isPlayingQueueRef = useRef(false);
 
   // Smoothly scroll ONLY the internal chat container to the bottom
   const scrollChatToBottom = () => {
@@ -33,66 +36,100 @@ export function AvatarChat() {
     scrollChatToBottom();
   }, [messages, isLoading]);
 
-  // Cleanup Web Audio context and animation frames on unmount
+  // Cleanup Web Audio context, audio, and queue on unmount
   useEffect(() => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (audioContextRef.current) audioContextRef.current.close();
-      if (audioRef.current) audioRef.current.pause(); // add this line
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      // Clear out any remaining queued audio URLs
+      audioQueueRef.current.forEach((url) => URL.revokeObjectURL(url));
+      audioQueueRef.current = [];
     };
   }, []);
 
-  // Handle Speech Synthesis & Voice Dynamics
-  // Stop any audio (cloned voice or browser voice) that is currently playing
+  // Stop all ongoing speech and clear the audio queue
   const stopAllSpeech = () => {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
-    }
+    audioQueueRef.current.forEach((url) => URL.revokeObjectURL(url));
+    audioQueueRef.current = [];
+    isPlayingQueueRef.current = false;
     setIsSpeaking(false);
     stopVoiceVisualizer();
   };
 
-  // Speak with the cloned voice from /api/tts, fall back to the browser voice
-  const speakText = async (text) => {
-    if (!text) return;
-    stopAllSpeech();
+  // Play audio chunks sequentially from the queue
+  const playNextInQueue = async () => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingQueueRef.current = false;
+      setIsSpeaking(false);
+      stopVoiceVisualizer();
+      return;
+    }
+
+    isPlayingQueueRef.current = true;
+    const audioBlobUrl = audioQueueRef.current.shift();
+    const audio = new Audio(audioBlobUrl);
+    audioRef.current = audio;
+
+    audio.onplay = () => {
+      setIsSpeaking(true);
+      startVoiceVisualizer();
+    };
+    
+    audio.onended = () => {
+      URL.revokeObjectURL(audioBlobUrl);
+      playNextInQueue();
+    };
+
+    audio.onerror = () => {
+      URL.revokeObjectURL(audioBlobUrl);
+      playNextInQueue();
+    };
+
+    try {
+      await audio.play();
+    } catch (err) {
+      console.warn("Audio playback error:", err);
+      playNextInQueue();
+    }
+  };
+
+  // Fetch TTS for a single sentence and push it to the queue
+  const queueSentenceForSpeech = async (sentence) => {
+    if (!sentence.trim()) return;
 
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: sentence }),
       });
 
       const type = res.headers.get('content-type') || '';
       if (!res.ok || !type.includes('audio')) {
-        fallbackBrowserSpeech(text);
+        // Fallback to browser speech if Fish Audio returns json fallback
+        fallbackBrowserSpeech(sentence);
         return;
       }
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audioUrlRef.current = url;
+      audioQueueRef.current.push(url);
 
-      audio.onplay = () => {
-        setIsSpeaking(true);
-        startVoiceVisualizer();
-      };
-      audio.onended = () => stopAllSpeech();
-      audio.onerror = () => stopAllSpeech();
-
-      await audio.play();
+      if (!isPlayingQueueRef.current) {
+        playNextInQueue();
+      }
     } catch (err) {
-      console.warn('Cloned voice failed, using browser voice:', err);
-      fallbackBrowserSpeech(text);
+      console.warn('TTS request failed for sentence, using browser fallback:', err);
+      fallbackBrowserSpeech(sentence);
     }
   };
 
@@ -144,6 +181,8 @@ export function AvatarChat() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    stopAllSpeech();
+
     const userMessage = { role: 'user', content: input.trim() };
     const updatedMessages = [...messages, userMessage];
 
@@ -165,6 +204,7 @@ export function AvatarChat() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let accumulatedResponse = '';
+      let processedLength = 0;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -181,19 +221,36 @@ export function AvatarChat() {
           };
           return newMsgs;
         });
+
+        // Scan for complete sentences incrementally as text streams in
+        const unparsedText = accumulatedResponse.slice(processedLength);
+        const sentenceMatch = unparsedText.match(/^(.*?[.!?])(\s+|$)/);
+
+        if (sentenceMatch) {
+          const sentence = sentenceMatch[1];
+          processedLength += sentenceMatch[0].length;
+          queueSentenceForSpeech(sentence);
+        }
       }
 
-      speakText(accumulatedResponse);
+      // Handle any trailing text left without a terminal punctuation mark at the end
+      if (processedLength < accumulatedResponse.length) {
+        const remainingText = accumulatedResponse.slice(processedLength);
+        if (remainingText.trim()) {
+          queueSentenceForSpeech(remainingText);
+        }
+      }
     } catch (err) {
       console.error(err);
+      const errorMsg = "Sorry, I'm having trouble connecting right now. Please feel free to send an email instead.";
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content:
-            "Sorry, I'm having trouble connecting right now. Please feel free to send an email instead.",
+          content: errorMsg,
         },
       ]);
+      queueSentenceForSpeech(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -202,14 +259,14 @@ export function AvatarChat() {
   // Dynamic box-shadow and scaling calculated from current speech volume
   const dynamicGlow = isSpeaking
     ? {
-      boxShadow: `
+        boxShadow: `
           0 0 ${12 + audioLevel * 25}px rgba(0, 82, 212, ${0.4 + audioLevel * 0.5}),
           0 0 ${25 + audioLevel * 45}px rgba(0, 62, 171, ${0.2 + audioLevel * 0.4}),
           inset 0 0 ${10 + audioLevel * 20}px rgba(255, 255, 255, 0.3)
         `,
-      borderColor: `rgba(0, 82, 212, ${0.6 + audioLevel * 0.4})`,
-      transform: `scale(${1 + audioLevel * 0.04})`,
-    }
+        borderColor: `rgba(0, 82, 212, ${0.6 + audioLevel * 0.4})`,
+        transform: `scale(${1 + audioLevel * 0.04})`,
+      }
     : {};
 
   return (
@@ -251,10 +308,11 @@ export function AvatarChat() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground rounded-br-none shadow-md'
-                    : 'bg-muted text-foreground border border-border rounded-bl-none'
-                    }`}
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-primary text-primary-foreground rounded-br-none shadow-md'
+                      : 'bg-muted text-foreground border border-border rounded-bl-none'
+                  }`}
                 >
                   {msg.content}
                 </div>
