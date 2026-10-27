@@ -16,6 +16,9 @@ export function AvatarChat() {
   const audioContextRef = useRef(null);
   const animFrameRef = useRef(null);
 
+  const audioRef = useRef(null);
+  const audioUrlRef = useRef(null);
+
   // Smoothly scroll ONLY the internal chat container to the bottom
   const scrollChatToBottom = () => {
     if (chatFeedRef.current) {
@@ -35,48 +38,62 @@ export function AvatarChat() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (audioContextRef.current) audioContextRef.current.close();
+      if (audioRef.current) audioRef.current.pause(); // add this line
     };
   }, []);
 
   // Handle Speech Synthesis & Voice Dynamics
+  // Stop any audio (cloned voice or browser voice) that is currently playing
+  const stopAllSpeech = () => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setIsSpeaking(false);
+    stopVoiceVisualizer();
+  };
+
+  // Speak with the cloned voice from /api/tts, fall back to the browser voice
   const speakText = async (text) => {
     if (!text) return;
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
+    stopAllSpeech();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Pick the best natural English/French/German voice available on your visitor's device
-    const voices = window.speechSynthesis.getVoices();
-    const naturalVoice = voices.find(
-      (v) => (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Microsoft')) &&
-             v.lang.startsWith('en')
-    ) || voices[0];
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
 
-    if (naturalVoice) {
-      utterance.voice = naturalVoice;
+      const type = res.headers.get('content-type') || '';
+      if (!res.ok || !type.includes('audio')) {
+        fallbackBrowserSpeech(text);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audioUrlRef.current = url;
+
+      audio.onplay = () => {
+        setIsSpeaking(true);
+        startVoiceVisualizer();
+      };
+      audio.onended = () => stopAllSpeech();
+      audio.onerror = () => stopAllSpeech();
+
+      await audio.play();
+    } catch (err) {
+      console.warn('Cloned voice failed, using browser voice:', err);
+      fallbackBrowserSpeech(text);
     }
-
-    // Professional pitch and rate adjustments for your portfolio avatar
-    utterance.rate = 1.05;
-    utterance.pitch = 0.95;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      startVoiceVisualizer();
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      stopVoiceVisualizer();
-    };
-
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      stopVoiceVisualizer();
-    };
-
-    window.speechSynthesis.speak(utterance);
   };
 
   const fallbackBrowserSpeech = (text) => {
@@ -235,8 +252,8 @@ export function AvatarChat() {
               >
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                      ? 'bg-primary text-primary-foreground rounded-br-none shadow-md'
-                      : 'bg-muted text-foreground border border-border rounded-bl-none'
+                    ? 'bg-primary text-primary-foreground rounded-br-none shadow-md'
+                    : 'bg-muted text-foreground border border-border rounded-bl-none'
                     }`}
                 >
                   {msg.content}
